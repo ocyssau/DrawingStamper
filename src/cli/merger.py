@@ -1,48 +1,98 @@
 #!/usr/bin/python
-from Application.Application import Application, Merger
-import argparse
-import sys
-import os
-import tempfile
-import logging
 
-app = Application()
+#import argparse
+#import sys
+#import os
+#import tempfile
+#import logging
+#
+# PDF merge starter:
+# Merge pages from multiple PDF documents (including annotations)
+#
+# Required software: PDFlib+PDI or PDFlib Personalization Server (PPS)
+# Required data: PDF documents
 
-# determine if application is a script file or frozen exe
-if getattr(sys, 'frozen', False):
-    srcPath = os.path.dirname((os.path.dirname(sys.executable)))
-    dataPath = os.path.join(os.path.dirname(srcPath), "data")
-elif __file__:
-    srcPath = os.path.dirname(os.path.dirname(__file__))
-    dataPath = os.path.join(os.path.dirname(srcPath), "data")
+from PDFlib.PDFlib import *
 
-Application.SRC_PATH = srcPath
-Application.DATA_PATH = dataPath
 
-logging.info("SOURCE PATH: " + srcPath)
-logging.info("DATA PATH: " + dataPath)
+#pdftk PL001-S532A2321052_S6503-NOTAS-BPF-INDA2.pdf PL002-S532A2321052_S6503-NOMENCLATURE-BPF-INDA2.pdf cat out.pdf
 
-parser = argparse.ArgumentParser('placards')
-parser.description = 'macro fusionnage des plans pdf'
-parser.epilog = 'for sier'
+#def printf(format, *args):
+#    sys.stdout.write(format % args)
 
-parser.add_argument('-i', help='Input Directory', default = dataPath)
-parser.add_argument('-o', help='Output File', default = os.path.join(tempfile.gettempdir(), "mergeout.pdf"))
-parser.add_argument('-v', help='Display infos and version')
+# This is where the data files are. Adjust as necessary.
+#searchpath = "../data"
 
-args = parser.parse_args()
-print(args)
+# By default annotations are also imported. In some cases this
+# requires the Noto fonts for creating annotation appearance streams.
+#fontpath =  "../../resource/font"
 
-if args.v == 1:
-    print("Merger for pdf SIER, See source code and help: " +  Application.WEB_SITE)
-    print("Version: " +  Application.VERSION)
+outfilename = "starter_pdfmerge.pdf"
 
-outpdf = args.o
-indir = args.i
-myMerger = Merger()
+pdffiles = (
+        "markup_annotations.pdf",
+        "PLOP-datasheet.pdf",
+        "pCOS-datasheet.pdf"
+)
 
-myMerger.addFromDirectory(indir)
-myMerger.save(outpdf)
+p = None
 
-logging.info("INPUT DIR: " + indir)
-logging.info("OUTPUT DIR: " + outpdf)
+try:
+    p = PDFlib()
+
+    # This means we must check return values of load_font() etc.
+    p.set_option("errorpolicy=return")
+
+    #p.set_option("SearchPath={{" + searchpath +"}}")
+    #p.set_option("SearchPath={{" + fontpath +"}}")
+
+    if (p.begin_document(outfilename, "") == -1):
+        raise Exception("Error: " + p.get_errmsg())
+
+    p.set_info("Creator", "PDFlib starter sample")
+    p.set_info("Title", "starter_pdfmerge")
+
+    for pdffile in (pdffiles):
+        # Open the input PDF
+        indoc = p.open_pdi_document(pdffile, "")
+        if (indoc == -1):
+            print("Error: %s\n", p.get_errmsg())
+            next
+
+        endpage = p.pcos_get_number(indoc, "length:pages")
+
+        # Loop over all pages of the input document
+        for pageno in range(1, int(endpage)+1, 1):
+            page = p.open_pdi_page(indoc, pageno, "")
+            if (page == -1):
+                print("Error: %s\n", p.get_errmsg())
+                next
+
+            # Dummy page size; will be adjusted later
+            p.begin_page_ext(10, 10, "")
+
+            # Create a bookmark with the file name
+            if (pageno == 1):
+                p.create_bookmark(pdffile, "")
+
+            # Place the imported page on the output page, and
+            # adjust the page size. If the page contains annotations
+            # these are also imported.
+
+            
+            p.fit_pdi_page(page, 0, 0, "adjustpage")
+            p.close_pdi_page(page)
+
+            p.end_page_ext("")
+
+        p.close_pdi_document(indoc)
+
+    p.end_document("")
+
+except Exception as ex:
+    print("PDFlib exception occurred:")
+    print("[%d] %s: %s" % (ex.errnum, ex.apiname, ex.errmsg))
+
+finally:
+    if p:
+        p.delete()

@@ -6,12 +6,18 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A0
-from PyPDF2 import PdfWriter, PdfReader, Transformation, PdfMerger
+
+#from PyPDF2 import PdfWriter, PdfReader, Transformation#, PdfMerger
+from pypdf import PdfWriter, PdfReader, Transformation #, PdfMerger
+
+#from PDFlib import *
+
 import logging
 import sys
 import io
 import glob
 import copy
+import json
 
 #from pathlib import Path
 #from typing import Union, Literal, List
@@ -57,57 +63,62 @@ class Application():
 class Stamper():
     
     def __init__(self, myStamp):
-        reader = PdfReader(myStamp.file)
-        self.stampPage = reader.pages[0]
-        self.stamp = myStamp
+        #watermark reader
+        self.wmReader = PdfReader(myStamp.file)
+        #watermark page
+        self.wmPage = self.wmReader.pages[0]
+        self.wm = myStamp
 
     def addFromDirectory(self, path):
         fileList = Application.getPdfFromDirectory(path)
         for filepath in fileList:
-            outpdf = filepath
             position = [30,30]
-            self.stampPdf(filepath, outpdf, "ALL", position)
+            outfiles = []
+            outfiles.append(self.stampPdf(filepath, "ALL", position))
+        return outfiles
 
-    def stampPdf(self, inpdf, outpdf, pages, position):
-        reader = PdfReader(inpdf)
-        writer = PdfWriter()
+    def stampPdf(self, inpdf,  pages, position):
+        pdfReader = PdfReader(open(inpdf, 'rb'), strict=False)
+        pdfWriter = PdfWriter()
 
         if pages == "ALL":
-            pages = list(range(0, len(reader.pages)))
-
-        for index in pages:
-            myPage = reader.pages[index]
-            myMediabox = myPage.mediabox
+            pages = list(range(0, len(pdfReader.pages)))
+        for page in pages:
             
+            page = pdfReader.pages[page]
+            myMediabox = page.mediabox
             posX, posY = position
             
             if posX < 0 :
-                trX = (float(myMediabox.width) - float(self.stamp.width)) + float(posX)
+                trX = (float(myMediabox.width) - float(self.wm.width)) + float(posX)
             else:
                 trX = posX
 
             if posY < 0 :
-                trY = (float(myMediabox.height) - float(self.stamp.height)) + float(posY)
+                trY = (float(myMediabox.height) - float(self.wm.height)) + float(posY)
             else:
                 trY = posY
             
             #les valeurs de trX et trY doivent etres des entiers, sign�s
-            myStampPage =  copy.deepcopy(self.stampPage)
-            myStampPage.add_transformation(Transformation().translate(tx=round(trX,0), ty=round(trY,0)))
-            myPage.merge_page(myStampPage)
-            myPage.compress_content_streams()
+            myWmPage =  copy.deepcopy(self.wmPage)
+            myWmPage.add_transformation(Transformation().translate(tx=round(trX,0), ty=round(trY,0)))
+            
+            page.merge_page(myWmPage)
             
             #myPage.mediabox = myMediabox
-            writer.add_page(myPage)
+            p = pdfWriter.add_page(page)
+            p.compress_content_streams()
         
-        writer.add_metadata(reader.metadata)
-        #with open(outpdf, "wb") as fp:
-            #writer.write(fp)
+        pdfWriter.add_metadata(pdfReader.metadata)
+        
+        pdfReader.stream.close()
+        
+        return pdfWriter
 
 class Merger():
     
     def __init__(self):
-        self.writer = PdfWriter()
+        self.pdfWriter = PdfWriter()
     
     def addFromDirectory(self, path):
         fileList = Application.getPdfFromDirectory(path)
@@ -115,17 +126,20 @@ class Merger():
             self.addPdf(filepath, "ALL")
     
     def addPdf(self, inpdf, pages):
-        reader = PdfReader(inpdf)
+        pdfReader = PdfReader(inpdf)
         if pages == "ALL":
-            pages = list(range(0, len(reader.pages)))
+            pages = list(range(0, len(pdfReader.pages)))
         for index in pages:
-            myPage = reader.pages[index]
-            myPage.compress_content_streams()
-            self.writer.add_page(myPage)
+            myPage = pdfReader.pages[index]
+            self.pdfWriter.add_page(myPage)
     
     def save(self, outpdf):
-        with open(outpdf, "wb") as fp:
-            self.writer.write(fp)
+        if len(self.pdfWriter.pages) > 0:
+            with open(outpdf, "wb") as fp:
+                self.pdfWriter.write(fp)
+                return True
+        else:
+            return False
 
 class Stamp():
     
@@ -143,6 +157,12 @@ class Stamp():
         self.nrow = 4
         self.ncol = 1
         self.setPoliceSize(8*mm)
+
+    def loadFromJson(self, jData):
+        self.__dict__ = json.load(jData)
+
+    def saveToJson(self):
+        return json.dumps(self)
     
     def setPoliceSize(self, policeSize):
         self.policeSize = policeSize

@@ -5,6 +5,9 @@ from tkinter import ttk
 from tkinter import filedialog
 from Application.Application import Stamp, Stamper, Merger, Application
 from reportlab.lib.units import mm
+import argparse
+import tempfile
+import logging
 
 class stamperGui(Tk):
         """ Mon programme graphique utilisant Python3 et Tkinter """
@@ -14,10 +17,10 @@ class stamperGui(Tk):
         statusBPC = "BON pour Consultation"
         statusBPA = "BON pour Approvisionnement"
         
-        def __init__(self):
+        def __init__(self, application):
             Tk.__init__(self)  # On dérive de Tk, on reprend sa méthode d'instanciation
             
-            self.application = Application()
+            self.application = application
             
             # Widgets
             
@@ -29,7 +32,7 @@ class stamperGui(Tk):
             ## stamp CC
             self.stampPdfVal = IntVar()
             self.stampPdfVal.set(1)
-            self.stampPdfCC = Checkbutton(self.Frame0,text = "Tamponner les PDFs",command = self._stampPdfCCOnClick, variable = self.stampPdfVal)
+            self.stampPdfCC = Checkbutton(self.Frame0, text = "Tamponner les PDFs", command = self._stampPdfCCOnClick, variable = self.stampPdfVal)
             self.stampPdfCC.grid(row=0 , column=0)
 
             ## merge pdf CC
@@ -67,7 +70,7 @@ class stamperGui(Tk):
             self.Frame2.grid(row=2 , column=0, columnspan=8, sticky=W)
             
             ##liste de selection du status
-            statusListe = (self.statusBPF, self.statusNPF, self.statusBPA, self.statusBPC)
+            statusListe = (self.statusBPF, self.statusNPF) #self.statusBPA, self.statusBPC
             self.statusSelectLabel = Label(self.Frame2, text=u" Status :")
             self.statusSelectLabel.grid(row=0 , column=0, sticky=W)
             self.statusSelect = ttk.Combobox(self.Frame2, text="", values=statusListe)
@@ -92,7 +95,7 @@ class stamperGui(Tk):
             
             ##position X
             posXVal = StringVar()
-            posXVal.set('50')
+            posXVal.set('15')
             self.PosXInLabel = Label(self.Frame3, text=u" X (mm)= ")
             self.PosXInLabel.grid(row=4 , column=0, sticky=W)
             self.PosXIn = Entry(self.Frame3, textvariable=posXVal)
@@ -100,7 +103,7 @@ class stamperGui(Tk):
             
             ##position Y
             posYVal = StringVar()
-            posYVal.set('30')
+            posYVal.set('-30')
             self.PosYInLabel = Label(self.Frame3, text=u" Y (mm)= ")
             self.PosYInLabel.grid(row=5 , column=0, sticky=W)
             self.PosYIn = Entry(self.Frame3, textvariable=posYVal)
@@ -179,39 +182,44 @@ class stamperGui(Tk):
 
                 #get files in current directory
                 inpdf = self.RepIn['text']
-                myStamp.saveToFile(os.path.join(inpdf, "stamp.pdf"))
+                #myStamp.saveToFile(os.path.join(inpdf, "stamp.pdf"))
 
             except Exception as e:
                 self.log(str(e))
             
             ## STAMP
-            try:
-                #init the stamper
-                myStamper = Stamper(myStamp)
-                
-                #stamp the pdf
-                fileList = Application.getPdfFromDirectory(inpdf)
-                for filepath in fileList:
-                    outpdf = filepath
-                    self.log("Stamp " + outpdf)
-                    myStamper.stampPdf(filepath, outpdf, "ALL", position)
-            except Exception as e:
-                self.log(str(e))
+            if self.stampPdfVal.get() :
+                try:
+                    #init the stamper
+                    myStamper = Stamper(myStamp)
+                    
+                    #stamp the pdf
+                    fileList = Application.getPdfFromDirectory(inpdf)
+                    for filepath in fileList:
+                        #outpdf = filepath.replace(".pdf", "-wm.pdf")
+                        outpdf = filepath
+                        self.log("Stamp " + outpdf)
+                        pdfWriter = myStamper.stampPdf(filepath, "ALL", position)
+                        pdfWriter.write(outpdf)
+                        
+                except Exception as e:
+                    self.log(str(e))
             
             ## MERGE
-            try:
-                #get files in current directory
-                #outDir = self.RepOut['text']
+            if self.mergePdfVal.get() :
+                try:
+                    #get files in current directory
+                    #outDir = self.RepOut['text']
+                    
+                    #init the merger
+                    myMerger = Merger()
+                    myMerger.addFromDirectory(inpdf)
+                    mergedFile = os.path.join(inpdf, "merged.pdf")
+                    self.log("Merge to " + mergedFile)
+                    myMerger.save(mergedFile)
+                except Exception as e:
+                    self.log(str(e))
                 
-                #init the merger
-                myMerger = Merger()
-                myMerger.addFromDirectory(inpdf)
-                mergedFile = os.path.join(inpdf, "merged.pdf")
-                self.log("Merge to " + mergedFile)
-                myMerger.save(mergedFile)
-            except Exception as e:
-                self.log(str(e))
-            
             self.log("...Finished-Ready")
         
         def _cancel(self):
@@ -234,10 +242,142 @@ class stamperGui(Tk):
             None
         
         def log(self, message):
+            logging.info(message)
             self.logOutputLabel['text'] = self.logOutputLabel['text'] + message + "\n"
-            #self.logOutputLabel['text'] = message
+
+class cli():
+    
+    def __init__(self, application):
+        self.application = application
+        
+    def merger(self, args):
+        # SET mypath=%~dp0
+        # cd %mypath:~0,-1%
+        # set PYTHONPATH=%cd%\src
+        # python .\src\gui\stamperFs.py -M --inDir U:\23-4406\03-PROJET\02-CAO\DELIVRE -i PL001-S532A2321052_S6503-NOTAS-BPF-INDA2.pdf PL002-S532A2321052_S6503-NOMENCLATURE-BPF-INDA2.pdf PL003-S532A2321052_S6503-ENV+OUTILLAGE-BPF-INDA2.pdf -o U:\23-4406\03-PROJET\02-CAO\DELIVRE\merged.pdf
+
+        outpdf = args.outFile
+        indir = args.inDir
+        infiles = args.inFile
+        myMerger = Merger()
+        
+        #si des fichiers sont specifiées, merge uniquement cela, cherche ces fichiers dans inDir si specifié, sinon file doit etre un chemin complet
+        if(len(infiles) > 0):
+            if(indir != "" ):
+                logging.info("INPUT DIR: " + indir)
+            else:
+                indir=""
+            for f in infiles:
+                f = os.path.join(indir, f)
+                if(os.path.isfile(f)):
+                    logging.info("INPUT FILE: " + f)
+                    myMerger.addPdf(f, "ALL")
+                else:
+                    logging.info("FILE NOT FOUND: " + f)
+        elif(indir != "" ):
+            logging.info("INPUT DIR: " + indir)
+            myMerger.addFromDirectory(indir)
+
+        if myMerger.save(outpdf) == True:
+            logging.info("OUTPUT FILE: " + outpdf)
+            return True
+        else:
+            logging.info("OUT FILE IS NOT SAVED")
+            return False
+
+    def stamper(self, args):
+        
+        myStamp.message = args.message
+        myStamp.date = args.date
+        myStamp.projectNumber = args.project
+        myStamp.username = args.user
+        myStamp.width = args.tWidth
+        myStamp.policeSize = args.pSize
+        myStamp.color = args.color  # blue, green, red
+        myStamp.backgroundColor = args.bgColor  # beige
+        
+        #generate pdf file for the stamp in a temmp file
+        myStamp.update()
+        
+        #logging.info("STAMP: " + myStamp.file.name)
+        logging.info(mm)
+        
+        #init the stamper
+        myStamper = Stamper(myStamp)
+        
+        #get files in current directory
+        inpdf = args.i
+        outpdf = args.o
+        
+        posX = args.x * mm
+        posY = args.y * mm
+        
+        #stamp the pdf
+        pdf = myStamper.stampPdf(inpdf, "ALL", [posX, posY])
+        pdf.write(outpdf)
+        
+        logging.info("INPUT DIR: " + inpdf)
+        logging.info("OUTPUT DIR: " + outpdf)
+
+#####################################################################
+#####################################################################
+#####################################################################
 
 if __name__ == '__main__':
-    application = stamperGui()  # Instanciation de la classe
-    application.mainloop()  # Boucle pour garder le programme en vie
-    application.quit()  # Fermeture propre à la sortie de la boucle
+
+    # determine if application is a script file or frozen exe
+    if getattr(sys, 'frozen', False):
+        srcPath = os.path.dirname((os.path.dirname(sys.executable)))
+        dataPath = os.path.join(os.path.dirname(srcPath), "data")
+    elif __file__:
+        srcPath = os.path.dirname(os.path.dirname(__file__))
+        dataPath = os.path.join(os.path.dirname(srcPath), "data")
+    
+    app = Application()
+    app.SRC_PATH = srcPath
+    app.DATA_PATH = dataPath
+    
+    logging.info("SOURCE PATH: " + srcPath)
+    logging.info("DATA PATH: " + dataPath)
+    
+    parser = argparse.ArgumentParser('placards')
+    parser.description = 'macro de tamponnage des plans pdf'
+    parser.epilog = 'for sier'
+    
+    myStamp = Stamp()
+    parser.add_argument('-M', "--merger", help='MERGER', action="store_true")
+    parser.add_argument('-S', "--stamper", help='STAMPER', action="store_true")
+    parser.add_argument('-a','--inDir', help='Input Directory', default = "")
+    parser.add_argument('-b','--outDir', help='Output Directory', default = tempfile.gettempdir())
+    parser.add_argument('-i', "--inFile", help='Input File', nargs='*', default = "")
+    parser.add_argument('-o', "--outFile", help='Output File', default = os.path.join(tempfile.gettempdir(), "out.pdf"))
+    parser.add_argument('-m', "--message", help='Message', default = myStamp.message)
+    parser.add_argument('-d', "--date", help='Date', default = myStamp.date)
+    parser.add_argument('-p', "--project", help='Project number', default = myStamp.projectNumber)
+    parser.add_argument('-u', "--user", help='Username', default = myStamp.username)
+    parser.add_argument('-w', "--tWidth", help='table Width', default = myStamp.width)
+    parser.add_argument('-s', "--pSize", help='police Size', default = myStamp.policeSize)
+    parser.add_argument('-x', "--posX", help='position X', default =0)
+    parser.add_argument('-y', "--posY", help='position Y', default =0)
+    parser.add_argument('-c', "--color", help='Color', default = myStamp.color)
+    parser.add_argument('-bc', "--bgColor", help='Background Color', default=myStamp.backgroundColor)
+    parser.add_argument("-v", "--version", help="Display infos and version", action="store_true")
+    
+    args = parser.parse_args()
+    print(args)
+    
+    if args.version == 1:
+        print("Stamper for pdf SIER, See source code and help: " +  Application.WEB_SITE)
+        print("Version: " +  Application.VERSION)
+        exit()
+    
+    if args.merger == 1:
+        cli = cli(app)
+        cli.merger(args)
+    elif args.stamper == 1:
+        cli = cli(app)
+        cli.stamper(args)
+    else:
+        gui = stamperGui(app)  # Instanciation de la classe
+        gui.mainloop()  # Boucle pour garder le programme en vie
+        gui.quit()  # Fermeture propre à la sortie de la boucle
