@@ -42,8 +42,8 @@ class stamperGui(Tk):
             self.mergePdfCC.grid(row=0 , column=1)
 
             ##Box selction entrees-sorties
-            self.title("Sier Drawing Stamper - Merger V"+self.application.VERSION)
-            self.geometry('450x450+100+100')
+            self.title("Sier Drawing Stamper - Merger V"+self.application.VERSION + "-" + self.application.WEB_SITE)
+            self.geometry('400x450')
             
             ##frame 1 : IN - OUT
             self.Frame1 = LabelFrame(self, relief=GROOVE, borderwidth=2, text="PDF : Selectionner les répertoires d'entrée et de sortie")

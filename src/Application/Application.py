@@ -31,7 +31,7 @@ class Application():
     CONFIG_INIPATH = ""
     CONFIG_DIST_INIPATH = ""
     USER_HOME = ""
-    WEB_SITE = ""
+    WEB_SITE = "https://github.com/ocyssau/DrawingStamper"
     
     def __init__(self):
         #https://docs.python.org/2/library/logging.html
